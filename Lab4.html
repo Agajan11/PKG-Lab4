@@ -1,0 +1,250 @@
+<!DOCTYPE html><html lang="ru"><head><meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://code.jquery.com https://unpkg.com https://d3js.org https://threejs.org https://cdn.plot.ly https://stackpath.bootstrapcdn.com https://maps.googleapis.com https://cdn.tailwindcss.com https://ajax.googleapis.com https://kit.fontawesome.com https://cdn.datatables.net https://maxcdn.bootstrapcdn.com https://code.highcharts.com https://tako-static-assets-production.s3.amazonaws.com https://www.youtube.com https://fonts.googleapis.com https://fonts.gstatic.com https://pfst.cf2.poecdn.net https://puc.poecdn.net https://i.imgur.com https://wikimedia.org https://*.icons8.com https://*.giphy.com https://picsum.photos https://images.unsplash.com; frame-src 'self' https://www.youtube.com https://trytako.com; child-src 'self'; manifest-src 'self'; worker-src 'self'; upgrade-insecure-requests; block-all-mixed-content;">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Алгоритмы растеризации</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        canvas {
+            border: 1px solid #000;
+            background-color: #fff;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 10px;
+        }
+        .controls div {
+            margin: 0 10px;
+        }
+        label, input, select {
+            margin-bottom: 5px;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <div>
+            <label for="algorithm">Алгоритм:</label>
+            <select id="algorithm">
+                <option value="step">Пошаговый алгоритм</option>
+                <option value="dda">Алгоритм ЦДА</option>
+                <option value="bresenham">Алгоритм Брезенхема</option>
+                <option value="bresenhamCircle">Алгоритм Брезенхема (окружность)</option>
+            </select>
+        </div>
+        <div>
+            <label for="x0">x0:</label>
+            <input type="number" id="x0" value="0">
+            <label for="y0">y0:</label>
+            <input type="number" id="y0" value="0">
+        </div>
+        <div>
+            <label for="x1">x1:</label>
+            <input type="number" id="x1" value="5">
+            <label for="y1">y1:</label>
+            <input type="number" id="y1" value="5">
+        </div>
+        <div>
+            <label for="scale">Масштаб:</label>
+            <input type="number" id="scale" value="20" min="5" max="50">
+        </div>
+        <button onclick="draw()">Нарисовать</button>
+    </div>
+    <canvas id="canvas" width="800" height="800"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Функция для рисования сетки с числами
+        function drawGrid(scale) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#ccc';
+            ctx.lineWidth = 1;
+
+            // Рисуем линии сетки
+            for (let x = 0; x <= canvas.width; x += scale) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            for (let y = 0; y <= canvas.height; y += scale) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+
+            // Оси координат
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, canvas.height / 2);
+            ctx.lineTo(canvas.width, canvas.height / 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(canvas.width / 2, 0);
+            ctx.lineTo(canvas.width / 2, canvas.height);
+            ctx.stroke();
+
+            // Добавляем числа на оси
+            ctx.fillStyle = '#000';
+            ctx.font = `${scale / 2}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            // Числа для оси X
+            for (let x = 0; x <= canvas.width; x += scale) {
+                const value = Math.round((x / scale) - (canvas.width / scale / 2));
+                ctx.fillText(value, x, canvas.height / 2 + scale / 2);
+            }
+
+            // Числа для оси Y
+            for (let y = 0; y <= canvas.height; y += scale) {
+                if (y !== canvas.height / 2) { // Не отображаем ноль дважды
+                    const value = Math.round((canvas.height / scale / 2) - (y / scale));
+                    ctx.fillText(value, canvas.width / 2 - scale / 2, y);
+                }
+            }
+        }
+
+        // Функция для рисования пикселя
+        function drawPixel(x, y, scale, color = 'black') {
+            ctx.fillStyle = color;
+            ctx.fillRect(
+                Math.round((x + canvas.width / scale / 2) * scale - scale / 2),
+                Math.round((canvas.height / scale / 2 - y) * scale - scale / 2),
+                scale - 1,
+                scale - 1
+            );
+        }
+
+        // Пошаговый алгоритм (не округляет координаты)
+        function stepByStep(x0, y0, x1, y1, scale) {
+            const dx = x1 - x0;
+            const dy = y1 - y0;
+            const steps = Math.max(Math.abs(dx), Math.abs(dy));
+            const xIncrement = dx / steps;
+            const yIncrement = dy / steps;
+
+            let x = x0;
+            let y = y0;
+            for (let i = 0; i <= steps; i++) {
+                drawPixel(x, y, scale, 'blue'); // Оставляем дробные координаты
+                x += xIncrement;
+                y += yIncrement;
+            }
+        }
+
+        // Алгоритм ЦДА (округляет координаты)
+        function dda(x0, y0, x1, y1, scale) {
+            const dx = x1 - x0;
+            const dy = y1 - y0;
+            const steps = Math.max(Math.abs(dx), Math.abs(dy));
+            const xIncrement = dx / steps;
+            const yIncrement = dy / steps;
+
+            let x = x0;
+            let y = y0;
+            for (let i = 0; i <= steps; i++) {
+                drawPixel(Math.round(x), Math.round(y), scale, 'green'); // Округляем координаты
+                x += xIncrement;
+                y += yIncrement;
+            }
+        }
+
+        // Алгоритм Брезенхема
+        function bresenham(x0, y0, x1, y1, scale) {
+            let dx = Math.abs(x1 - x0);
+            let dy = Math.abs(y1 - y0);
+            let sx = x0 < x1 ? 1 : -1;
+            let sy = y0 < y1 ? 1 : -1;
+            let err = dx - dy;
+
+            while (true) {
+                drawPixel(x0, y0, scale, 'red');
+                if (x0 === x1 && y0 === y1) break;
+                const e2 = 2 * err;
+                if (e2 > -dy) {
+                    err -= dy;
+                    x0 += sx;
+                }
+                if (e2 < dx) {
+                    err += dx;
+                    y0 += sy;
+                }
+            }
+        }
+
+        // Алгоритм Брезенхема (окружность)
+        function bresenhamCircle(xc, yc, r, scale) {
+            let x = 0;
+            let y = r;
+            let d = 3 - 2 * r;
+            drawCirclePixels(xc, yc, x, y, scale);
+            while (y >= x) {
+                x++;
+                if (d > 0) {
+                    y--;
+                    d = d + 4 * (x - y) + 10;
+                } else {
+                    d = d + 4 * x + 6;
+                }
+                drawCirclePixels(xc, yc, x, y, scale);
+            }
+        }
+
+        // Рисуем пиксели окружности
+        function drawCirclePixels(xc, yc, x, y, scale) {
+            drawPixel(xc + x, yc + y, scale, 'purple');
+            drawPixel(xc - x, yc + y, scale, 'purple');
+            drawPixel(xc + x, yc - y, scale, 'purple');
+            drawPixel(xc - x, yc - y, scale, 'purple');
+            drawPixel(xc + y, yc + x, scale, 'purple');
+            drawPixel(xc - y, yc + x, scale, 'purple');
+            drawPixel(xc + y, yc - x, scale, 'purple');
+            drawPixel(xc - y, yc - x, scale, 'purple');
+        }
+
+        // Основная функция для рисования
+        function draw() {
+            const scale = parseInt(document.getElementById('scale').value);
+            drawGrid(scale);
+            const algorithm = document.getElementById('algorithm').value;
+            const x0 = parseInt(document.getElementById('x0').value);
+            const y0 = parseInt(document.getElementById('y0').value);
+            const x1 = parseInt(document.getElementById('x1').value);
+            const y1 = parseInt(document.getElementById('y1').value);
+
+            switch (algorithm) {
+                case 'step':
+                    stepByStep(x0, y0, x1, y1, scale);
+                    break;
+                case 'dda':
+                    dda(x0, y0, x1, y1, scale);
+                    break;
+                case 'bresenham':
+                    bresenham(x0, y0, x1, y1, scale);
+                    break;
+                case 'bresenhamCircle':
+                    const r = Math.sqrt((x1 - x0) ** 2 + (y1 - y0) ** 2); // Радиус по расстоянию
+                    bresenhamCircle(x0, y0, Math.round(r), scale);
+                    break;
+            }
+        }
+
+        drawGrid(20); // Отрисовка сетки при загрузке
+    </script>
+
+
+</body></html>
